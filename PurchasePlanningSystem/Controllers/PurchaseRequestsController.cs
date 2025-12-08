@@ -1,110 +1,103 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using PurchasePlanningSystem.Utils;
-using System.Data;
 using MySql.Data.MySqlClient;
-using PurchasePlanningSystem.Models;
 
 namespace PurchasePlanningSystem.Controllers
 {
     public class PurchaseRequestsController : Controller
     {
-        // GET: /PurchaseRequests
+        // 1. СПИСОК ЗАЯВОК (просто показывает что есть)
         public IActionResult Index()
         {
+            // Проверка входа
             if (HttpContext.Session.GetString("UserId") == null)
                 return RedirectToAction("Login", "Auth");
 
+            // Берём заявки из БД
             var sql = @"
                 SELECT pr.Id, pr.Number, pr.Date, pr.Status, u.FullName as CreatedBy
                 FROM PurchaseRequests pr
                 LEFT JOIN Users u ON pr.CreatedByUserId = u.Id
-                ORDER BY pr.Date DESC
-                LIMIT 50";
+                ORDER BY pr.Date DESC";
 
-            var dataTable = DatabaseHelper.GetDataTable(sql);
-            var requests = new List<PurchaseRequestViewModel>();
-
-            foreach (DataRow row in dataTable.Rows)
-            {
-                requests.Add(new PurchaseRequestViewModel
-                {
-                    Id = Convert.ToInt32(row["Id"]),
-                    Number = row["Number"].ToString(),
-                    Date = Convert.ToDateTime(row["Date"]),
-                    Status = row["Status"].ToString(),
-                    CreatedBy = row["CreatedBy"].ToString()
-                });
-            }
-
+            var table = DatabaseHelper.GetDataTable(sql);
+            ViewBag.Requests = table; // Кидаем прямо DataTable во ViewBag
             ViewBag.UserRole = HttpContext.Session.GetString("UserRole");
-            return View(requests);
+
+            return View();
         }
 
-        // GET: /PurchaseRequests/Create
+        // 2. ФОРМА СОЗДАНИЯ (просто показывает форму)
         public IActionResult Create()
         {
             if (HttpContext.Session.GetString("UserId") == null)
                 return RedirectToAction("Login", "Auth");
 
+            // Берём продукты
             var products = DatabaseHelper.GetDataTable("SELECT Id, Name, Unit FROM Products");
             ViewBag.Products = products;
 
             return View();
         }
 
-        // POST: /PurchaseRequests/Create
+        // 3. СОХРАНЕНИЕ ЗАЯВКИ (самый тупой вариант - ОДНА строка)
         [HttpPost]
-        public IActionResult Create(List<int> productIds, List<decimal> quantities, List<DateTime> dates)
+        public IActionResult Create(int productIds, decimal quantities, DateTime dates)
         {
-            try
-            {
-                // 1. Проверка авторизации
-                var userId = HttpContext.Session.GetString("UserId");
-                if (string.IsNullOrEmpty(userId))
-                {
-                    return RedirectToAction("Login", "Auth");
-                }
+            var userId = HttpContext.Session.GetString("UserId");
+            if (string.IsNullOrEmpty(userId))
+                return RedirectToAction("Login", "Auth");
 
-                // 2. Получаем продукты из БД
-                string sql = "SELECT Id, Name, Unit FROM Products WHERE 1";
-                var productsTable = DatabaseHelper.GetDataTable(sql);
+            // Генерируем номер
+            var number = "PR-" + DateTime.Now.ToString("yyyyMMdd-HHmm");
 
-                // 3. Проверяем, что данные получены
-                if (productsTable == null || productsTable.Rows.Count == 0)
-                {
-                    ViewBag.Error = "В базе нет продуктов. Обратитесь к администратору.";
-                }
+            // 1. Вставляем заявку
+            var sqlRequest = @"
+                INSERT INTO PurchaseRequests (Number, Date, Status, CreatedByUserId) 
+                VALUES (@Number, NOW(), 'Draft', @UserId);
+                SELECT LAST_INSERT_ID();";
 
-                ViewBag.Products = productsTable;
-                return View();
-            }
-            catch (Exception ex)
-            {
-                // В режиме отладки показываем ошибку
-                return Content($"Ошибка при загрузке формы: {ex.Message}<br>Убедитесь, что БД запущена и таблица Products существует.");
-            }
+            var requestId = DatabaseHelper.ExecuteScalar(sqlRequest,
+                new MySqlParameter("@Number", number),
+                new MySqlParameter("@UserId", int.Parse(userId)));
+
+            // 2. Вставляем ОДНУ строку заявки
+            var sqlItem = @"
+                INSERT INTO PurchaseRequestItems (RequestId, ProductId, Quantity, RequiredDate) 
+                VALUES (@RequestId, @ProductId, @Quantity, @Date)";
+
+            DatabaseHelper.ExecuteNonQuery(sqlItem,
+                new MySqlParameter("@RequestId", requestId),
+                new MySqlParameter("@ProductId", productIds),
+                new MySqlParameter("@Quantity", quantities),
+                new MySqlParameter("@Date", dates.Date) // Только дата!
+            );
+
+            // 3. Переходим к просмотру этой заявки
+            return RedirectToAction("Details", new { id = requestId });
         }
 
-        // GET: /PurchaseRequests/Details/{id}
+        // 4. ПРОСМОТР ЗАЯВКИ (просто показывает)
         public IActionResult Details(int id)
         {
             if (HttpContext.Session.GetString("UserId") == null)
                 return RedirectToAction("Login", "Auth");
 
+            // Берём заявку
             var sql = @"
                 SELECT pr.*, u.FullName as CreatedByName 
                 FROM PurchaseRequests pr
                 LEFT JOIN Users u ON pr.CreatedByUserId = u.Id
                 WHERE pr.Id = @Id";
 
-            var dataTable = DatabaseHelper.GetDataTable(sql, new MySqlParameter("@Id", id));
+            var requestTable = DatabaseHelper.GetDataTable(sql, new MySqlParameter("@Id", id));
 
-            if (dataTable.Rows.Count == 0)
-                return NotFound();
+            if (requestTable.Rows.Count == 0)
+                return Content("Заявка не найдена");
 
-            ViewBag.Request = dataTable.Rows[0];
+            ViewBag.Request = requestTable.Rows[0];
 
-            // Получаем строки заявки
+            // Берём её строки
             var itemsSql = @"
                 SELECT pri.*, p.Name as ProductName, p.Unit
                 FROM PurchaseRequestItems pri
@@ -116,11 +109,61 @@ namespace PurchasePlanningSystem.Controllers
             return View();
         }
 
-        // GET: /PurchaseRequests/CreateOrder?requestId=5
+        // 5. СОЗДАНИЕ ЗАКАЗА (просто создаёт заказ из заявки)
         public IActionResult CreateOrder(int requestId)
         {
-            // Заглушка - вернёмся к этому позже
-            return Content($"Заказ из заявки {requestId} будет создан здесь");
+            if (HttpContext.Session.GetString("UserId") == null)
+                return RedirectToAction("Login", "Auth");
+
+            // Берём заявку
+            var requestSql = "SELECT * FROM PurchaseRequests WHERE Id = @Id";
+            var request = DatabaseHelper.GetDataTable(requestSql, new MySqlParameter("@Id", requestId));
+
+            if (request.Rows.Count == 0)
+                return Content("Заявка не найдена");
+
+            // Берём первого поставщика
+            var supplierSql = "SELECT Id FROM Suppliers WHERE IsActive = TRUE LIMIT 1";
+            var supplierId = DatabaseHelper.ExecuteScalar(supplierSql);
+
+            if (supplierId == null)
+                return Content("Нет активных поставщиков");
+
+            // Создаём номер заказа
+            var orderNumber = "PO-" + DateTime.Now.ToString("yyyyMMdd-HHmm");
+
+            // 1. Создаём заказ
+            var orderSql = @"
+                INSERT INTO PurchaseOrders (Number, Date, Status, SupplierId, RequestId, CreatedByUserId) 
+                VALUES (@Number, NOW(), 'Draft', @SupplierId, @RequestId, @UserId);
+                SELECT LAST_INSERT_ID();";
+
+            var orderId = DatabaseHelper.ExecuteScalar(orderSql,
+                new MySqlParameter("@Number", orderNumber),
+                new MySqlParameter("@SupplierId", supplierId),
+                new MySqlParameter("@RequestId", requestId),
+                new MySqlParameter("@UserId", int.Parse(HttpContext.Session.GetString("UserId")))
+            );
+
+            // 2. Копируем строки из заявки в заказ (с ценой = 0)
+            var copyItemsSql = @"
+                INSERT INTO PurchaseOrderItems (OrderId, ProductId, Quantity, Price)
+                SELECT @OrderId, pri.ProductId, pri.Quantity, 0
+                FROM PurchaseRequestItems pri
+                WHERE pri.RequestId = @RequestId";
+
+            DatabaseHelper.ExecuteNonQuery(copyItemsSql,
+                new MySqlParameter("@OrderId", orderId),
+                new MySqlParameter("@RequestId", requestId)
+            );
+
+            // 3. Меняем статус заявки
+            DatabaseHelper.ExecuteNonQuery(
+                "UPDATE PurchaseRequests SET Status = 'Processed' WHERE Id = @Id",
+                new MySqlParameter("@Id", requestId)
+            );
+
+            return Content($"Заказ {orderNumber} создан! ID: {orderId}");
         }
     }
 }
