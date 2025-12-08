@@ -1,21 +1,61 @@
-﻿@{
+﻿@model System.Data.DataTable
+@{
     Layout = "_Layout";
     ViewData["Title"] = "Управление пользователями";
 }
-<h2>Пользователи</h2>
-<a href="/Admin/CreateUser" class="btn btn-primary mb-3">+ Добавить пользователя</a>
-<table class="table">
-    <thead><tr><th>ID</th><th>Логин</th><th>Имя</th><th>Роль</th><th>Активен</th></tr></thead>
-    <tbody>
-        @foreach (System.Data.DataRow row in Model.Rows)
-        {
+<div class="container">
+    <h2>Пользователи системы</h2>
+
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger">@TempData["Error"]</div>
+    }
+
+    <a href="/Admin/CreateUser" class="btn btn-success mb-3">➕ Добавить пользователя</a>
+
+    <table class="table table-striped">
+        <thead>
             <tr>
-                <td>@row["Id"]</td>
-                <td>@row["Login"]</td>
-                <td>@row["FullName"]</td>
-                <td><span class="badge @(row["Role"].ToString() == "Admin" ? "bg-danger" : "bg-info")">@row["Role"]</span></td>
-                <td>@(row["IsActive"].ToString() == "True" ? "✅" : "❌")</td>
+                <th>ID</th>
+                <th>Логин</th>
+                <th>ФИО</th>
+                <th>Роль</th>
+                <th>Активен</th>
+                <th>Действия</th>
             </tr>
-        }
-    </tbody>
-</table>
+        </thead>
+        <tbody>
+            @foreach (System.Data.DataRow row in Model.Rows)
+            {
+                <tr>
+                    <td>@row["Id"]</td>
+                    <td>@row["Login"]</td>
+                    <td>@row["FullName"]</td>
+                    <td>
+                        <span class="badge @(row["Role"].ToString() == "Admin" ? "bg-danger" : "bg-primary")">
+                            @row["Role"]
+                        </span>
+                    </td>
+                    <td>
+                        @if (row["IsActive"].ToString() == "True")
+                        {
+                            <span class="badge bg-success">Да</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">Нет</span>
+                        }
+                    </td>
+                    <td>
+                        <a href="/Admin/EditUser/@row["Id"]" class="btn btn-sm btn-warning">✏️</a>
+                        <a href="/Admin/DeleteUser/@row["Id"]"
+                           class="btn btn-sm btn-danger"
+                           onclick="return confirm('Удалить пользователя @row["Login"]?')">🗑️</a>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <a href="/PurchaseRequests" class="btn btn-secondary">← На главную</a>
+</div>

@@ -26,11 +26,6 @@
                     <td>@row["CreatedBy"]</td>
                     <td>
                         <a href="/PurchaseRequests/Details/@row["Id"]" class="btn btn-sm btn-info">Просмотр</a>
-                        @if (status == "Draft")
-                        {
-                            <a href="/PurchaseRequests/CreateOrder?requestId=@row["Id"]"
-                               class="btn btn-sm btn-warning">Создать заказ</a>
-                        }
                     </td>
                 </tr>
             }
