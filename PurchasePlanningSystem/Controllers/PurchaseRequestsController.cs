@@ -109,8 +109,33 @@ namespace PurchasePlanningSystem.Controllers
             return View();
         }
 
-        // 5. СОЗДАНИЕ ЗАКАЗА (просто создаёт заказ из заявки)
+        // 5. GET версия - страница подтверждения создания заказа
+        [HttpGet]
+        public IActionResult CreateOrder(int requestId, bool confirm = false)
+        {
+            if (HttpContext.Session.GetString("UserId") == null)
+                return RedirectToAction("Login", "Auth");
+
+            // Если confirm=true, сразу создаём заказ (для прямой ссылки из Index)
+            if (confirm)
+            {
+                return CreateOrderPost(requestId);
+            }
+
+            // Иначе показываем страницу подтверждения
+            ViewBag.RequestId = requestId;
+            return View("ConfirmOrder");
+        }
+
+        // 6. POST версия - создание заказа
+        [HttpPost]
         public IActionResult CreateOrder(int requestId)
+        {
+            return CreateOrderPost(requestId);
+        }
+
+        // 7. Общая логика создания заказа
+        private IActionResult CreateOrderPost(int requestId)
         {
             if (HttpContext.Session.GetString("UserId") == null)
                 return RedirectToAction("Login", "Auth");
@@ -122,6 +147,12 @@ namespace PurchasePlanningSystem.Controllers
             if (request.Rows.Count == 0)
                 return Content("Заявка не найдена");
 
+            // Проверяем, что заявка в статусе Draft
+            if (request.Rows[0]["Status"].ToString() != "Draft")
+            {
+                return Content("Заявка уже обработана или отменена");
+            }
+
             // Берём первого поставщика
             var supplierSql = "SELECT Id FROM Suppliers WHERE IsActive = TRUE LIMIT 1";
             var supplierId = DatabaseHelper.ExecuteScalar(supplierSql);
@@ -132,51 +163,77 @@ namespace PurchasePlanningSystem.Controllers
             // Создаём номер заказа
             var orderNumber = "PO-" + DateTime.Now.ToString("yyyyMMdd-HHmm");
 
-            // 1. Создаём заказ
-            var orderSql = @"
-                INSERT INTO PurchaseOrders (Number, Date, Status, SupplierId, RequestId, CreatedByUserId) 
-                VALUES (@Number, NOW(), 'Draft', @SupplierId, @RequestId, @UserId);
-                SELECT LAST_INSERT_ID();";
+            int orderId = 0;
 
-            var orderId = DatabaseHelper.ExecuteScalar(orderSql,
-                new MySqlParameter("@Number", orderNumber),
-                new MySqlParameter("@SupplierId", supplierId),
-                new MySqlParameter("@RequestId", requestId),
-                new MySqlParameter("@UserId", int.Parse(HttpContext.Session.GetString("UserId")))
-            );
+            // Используем транзакцию
+            using (var connection = DatabaseHelper.GetOpenConnection())
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    // 1. Создаём заказ
+                    var orderSql = @"
+                        INSERT INTO PurchaseOrders (Number, Date, Status, SupplierId, RequestId, CreatedByUserId) 
+                        VALUES (@Number, NOW(), 'Draft', @SupplierId, @RequestId, @UserId);
+                        SELECT LAST_INSERT_ID();";
 
-            // 2. Копируем строки из заявки в заказ (с ценой = 0)
-            var copyItemsSql = @"
-                INSERT INTO PurchaseOrderItems (OrderId, ProductId, Quantity, Price)
-                SELECT @OrderId, pri.ProductId, pri.Quantity, 0
-                FROM PurchaseRequestItems pri
-                WHERE pri.RequestId = @RequestId";
+                    using (var cmd = new MySqlCommand(orderSql, connection, transaction))
+                    {
+                        cmd.Parameters.AddWithValue("@Number", orderNumber);
+                        cmd.Parameters.AddWithValue("@SupplierId", supplierId);
+                        cmd.Parameters.AddWithValue("@RequestId", requestId);
+                        cmd.Parameters.AddWithValue("@UserId", int.Parse(HttpContext.Session.GetString("UserId")));
+                        orderId = Convert.ToInt32(cmd.ExecuteScalar());
+                    }
 
-            DatabaseHelper.ExecuteNonQuery(copyItemsSql,
-                new MySqlParameter("@OrderId", orderId),
-                new MySqlParameter("@RequestId", requestId)
-            );
+                    // 2. Копируем строки из заявки в заказ (с ценой = 0)
+                    var copyItemsSql = @"
+                        INSERT INTO PurchaseOrderItems (OrderId, ProductId, Quantity, Price)
+                        SELECT @OrderId, pri.ProductId, pri.Quantity, 0
+                        FROM PurchaseRequestItems pri
+                        WHERE pri.RequestId = @RequestId";
 
-            // 3. Меняем статус заявки
-            DatabaseHelper.ExecuteNonQuery(
-                "UPDATE PurchaseRequests SET Status = 'Processed' WHERE Id = @Id",
-                new MySqlParameter("@Id", requestId)
-            );
+                    using (var cmd = new MySqlCommand(copyItemsSql, connection, transaction))
+                    {
+                        cmd.Parameters.AddWithValue("@OrderId", orderId);
+                        cmd.Parameters.AddWithValue("@RequestId", requestId);
+                        cmd.ExecuteNonQuery();
+                    }
 
-            return Content($"Заказ {orderNumber} создан! ID: {orderId}");
+                    // 3. Меняем статус заявки
+                    using (var cmd = new MySqlCommand(
+                        "UPDATE PurchaseRequests SET Status = 'Processed' WHERE Id = @Id",
+                        connection, transaction))
+                    {
+                        cmd.Parameters.AddWithValue("@Id", requestId);
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    transaction.Commit();
+                }
+                catch (Exception ex)
+                {
+                    transaction.Rollback();
+                    return Content($"Ошибка при создании заказа: {ex.Message}");
+                }
+            }
+
+            // Редирект на страницу заказа с сообщением об успехе
+            return RedirectToAction("OrderDetails", new { id = orderId, message = $"Заказ {orderNumber} успешно создан!" });
         }
 
+        // 8. ПРОСМОТР ЗАКАЗА
         public IActionResult OrderDetails(int id, string message = "")
         {
             if (!string.IsNullOrEmpty(message)) ViewBag.Message = message;
 
             var sql = @"
-        SELECT po.*, s.Name as SupplierName, u.FullName as CreatedByName, pr.Number as RequestNumber
-        FROM PurchaseOrders po
-        LEFT JOIN Suppliers s ON po.SupplierId = s.Id
-        LEFT JOIN Users u ON po.CreatedByUserId = u.Id
-        LEFT JOIN PurchaseRequests pr ON po.RequestId = pr.Id
-        WHERE po.Id = @Id";
+                SELECT po.*, s.Name as SupplierName, u.FullName as CreatedByName, pr.Number as RequestNumber
+                FROM PurchaseOrders po
+                LEFT JOIN Suppliers s ON po.SupplierId = s.Id
+                LEFT JOIN Users u ON po.CreatedByUserId = u.Id
+                LEFT JOIN PurchaseRequests pr ON po.RequestId = pr.Id
+                WHERE po.Id = @Id";
 
             var orderTable = DatabaseHelper.GetDataTable(sql, new MySqlParameter("@Id", id));
             if (orderTable.Rows.Count == 0) return Content("Заказ не найден");
@@ -185,10 +242,10 @@ namespace PurchasePlanningSystem.Controllers
 
             // Строки заказа
             var itemsSql = @"
-        SELECT poi.*, p.Name as ProductName, p.Unit
-        FROM PurchaseOrderItems poi
-        LEFT JOIN Products p ON poi.ProductId = p.Id
-        WHERE poi.OrderId = @OrderId";
+                SELECT poi.*, p.Name as ProductName, p.Unit
+                FROM PurchaseOrderItems poi
+                LEFT JOIN Products p ON poi.ProductId = p.Id
+                WHERE poi.OrderId = @OrderId";
 
             ViewBag.Items = DatabaseHelper.GetDataTable(itemsSql, new MySqlParameter("@OrderId", id));
 

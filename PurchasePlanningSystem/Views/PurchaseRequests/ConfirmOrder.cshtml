@@ -1,0 +1,17 @@
+﻿@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Подтверждение";
+}
+<div class="container mt-5">
+    <div class="card">
+        <div class="card-body text-center">
+            <h4>Сформировать заказ из заявки?</h4>
+            <p>Будет создан заказ поставщику на основе этой заявки.</p>
+            <form method="post" action="/PurchaseRequests/CreateOrder">
+                <input type="hidden" name="requestId" value="@ViewBag.RequestId" />
+                <button type="submit" class="btn btn-warning btn-lg">Да, сформировать заказ</button>
+                <a href="/PurchaseRequests/Details/@ViewBag.RequestId" class="btn btn-secondary btn-lg">Отмена</a>
+            </form>
+        </div>
+    </div>
+</div>
