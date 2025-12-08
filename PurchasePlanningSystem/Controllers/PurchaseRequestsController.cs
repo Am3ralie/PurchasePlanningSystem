@@ -56,60 +56,33 @@ namespace PurchasePlanningSystem.Controllers
         [HttpPost]
         public IActionResult Create(List<int> productIds, List<decimal> quantities, List<DateTime> dates)
         {
-            var userId = HttpContext.Session.GetString("UserId");
-            if (string.IsNullOrEmpty(userId) || productIds == null || productIds.Count == 0)
-                return RedirectToAction("Login", "Auth");
-
-            var number = "PR-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
-            int requestId = 0;
-
-            // Используем транзакцию для целостности
-            using (var connection = DatabaseHelper.GetOpenConnection())
-            using (var transaction = connection.BeginTransaction())
+            try
             {
-                try
+                // 1. Проверка авторизации
+                var userId = HttpContext.Session.GetString("UserId");
+                if (string.IsNullOrEmpty(userId))
                 {
-                    // 1. Создаём заявку
-                    var sqlRequest = @"
-                        INSERT INTO PurchaseRequests (Number, Date, Status, CreatedByUserId) 
-                        VALUES (@Number, NOW(), 'Draft', @UserId);
-                        SELECT LAST_INSERT_ID();";
-
-                    using (var cmd = new MySqlCommand(sqlRequest, connection, transaction))
-                    {
-                        cmd.Parameters.AddWithValue("@Number", number);
-                        cmd.Parameters.AddWithValue("@UserId", Convert.ToInt32(userId));
-                        requestId = Convert.ToInt32(cmd.ExecuteScalar());
-                    }
-
-                    // 2. Добавляем все строки заявки
-                    for (int i = 0; i < productIds.Count; i++)
-                    {
-                        var sqlItem = @"
-                            INSERT INTO PurchaseRequestItems (RequestId, ProductId, Quantity, RequiredDate) 
-                            VALUES (@RequestId, @ProductId, @Quantity, @RequiredDate)";
-
-                        using (var cmd = new MySqlCommand(sqlItem, connection, transaction))
-                        {
-                            cmd.Parameters.AddWithValue("@RequestId", requestId);
-                            cmd.Parameters.AddWithValue("@ProductId", productIds[i]);
-                            cmd.Parameters.AddWithValue("@Quantity", quantities[i]);
-                            cmd.Parameters.AddWithValue("@RequiredDate", dates[i].ToString("yyyy-MM-dd"));
-                            cmd.ExecuteNonQuery();
-                        }
-                    }
-
-                    transaction.Commit();
+                    return RedirectToAction("Login", "Auth");
                 }
-                catch (Exception)
+
+                // 2. Получаем продукты из БД
+                string sql = "SELECT Id, Name, Unit FROM Products WHERE 1";
+                var productsTable = DatabaseHelper.GetDataTable(sql);
+
+                // 3. Проверяем, что данные получены
+                if (productsTable == null || productsTable.Rows.Count == 0)
                 {
-                    transaction.Rollback();
-                    throw;
+                    ViewBag.Error = "В базе нет продуктов. Обратитесь к администратору.";
                 }
+
+                ViewBag.Products = productsTable;
+                return View();
             }
-
-            // РЕДИРЕКТ НА DETAILS С ID НОВОЙ ЗАЯВКИ
-            return RedirectToAction("Details", new { id = requestId });
+            catch (Exception ex)
+            {
+                // В режиме отладки показываем ошибку
+                return Content($"Ошибка при загрузке формы: {ex.Message}<br>Убедитесь, что БД запущена и таблица Products существует.");
+            }
         }
 
         // GET: /PurchaseRequests/Details/{id}

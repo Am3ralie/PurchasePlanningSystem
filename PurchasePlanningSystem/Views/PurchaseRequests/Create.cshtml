@@ -1,17 +1,19 @@
 ﻿@{
-    ViewData["Title"] = "Создание заявки";
-}
-@{
     Layout = "_Layout";
+    ViewData["Title"] = "Создание заявки";
 }
 <h2>Создание заявки на закупку</h2>
 
-<form method="post">
-    <!-- ПРОСТАЯ ВЕРСИЯ - ОДНА СТРОКА -->
-    <div class="form-group">
+@if (ViewBag.Error != null)
+{
+    <div class="alert alert-danger">@ViewBag.Error</div>
+}
+
+<form method="post" action="/PurchaseRequests/Create">
+    <div class="form-group mb-3">
         <label>Продукт:</label>
         <select name="productIds" class="form-control" required>
-            <option value="">-- Выберите --</option>
+            <option value="">-- Выберите продукт --</option>
             @if (ViewBag.Products != null)
             {
                 foreach (System.Data.DataRow row in ViewBag.Products.Rows)
@@ -22,16 +24,17 @@
         </select>
     </div>
 
-    <div class="form-group">
+    <div class="form-group mb-3">
         <label>Количество:</label>
-        <input type="number" name="quantities" step="0.001" class="form-control" required />
+        <input type="number" name="quantities" step="0.001" class="form-control" value="1" required />
     </div>
 
-    <div class="form-group">
+    <div class="form-group mb-3">
         <label>Требуемая дата:</label>
-        <input type="date" name="dates" class="form-control" required />
+        <input type="date" name="dates" class="form-control"
+               value="@DateTime.Now.AddDays(3).ToString("yyyy-MM-dd")" required />
     </div>
 
     <button type="submit" class="btn btn-primary">Создать заявку</button>
-    <a asp-action="Index" class="btn btn-secondary">Отмена</a>
+    <a href="/PurchaseRequests" class="btn btn-secondary">Отмена</a>
 </form>
