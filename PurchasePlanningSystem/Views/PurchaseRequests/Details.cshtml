@@ -64,13 +64,25 @@
     <!-- ОДНА КНОПКА ДЕЙСТВИЯ ВНИЗУ -->
     <div class="mt-4 d-flex justify-content-between">
         <div>
-            @if (request?["Status"]?.ToString() == "Draft")
-            {
-                <form method="post" action="/PurchaseRequests/CreateOrder" style="display: inline;">
-                    <input type="hidden" name="requestId" value="@request?["Id"]" />
-                    <button type="submit" class="btn btn-warning">📦 Сформировать заказ</button>
-                </form>
-            }
+@if (request?["Status"]?.ToString() == "Draft")
+{
+   
+    <!-- Добавляем кнопки редактирования/удаления -->
+    @{
+        var currentUserId = Context.Session.GetString("UserId");
+        var currentUserRole = Context.Session.GetString("UserRole");
+        var isOwner = request?["CreatedByUserId"]?.ToString() == currentUserId;
+        var canEdit = isOwner || currentUserRole == "Admin";
+    }
+    
+    @if (canEdit)
+    {
+        <a href="/PurchaseRequests/Edit/@request?["Id"]" class="btn btn-primary">✏️ Редактировать</a>
+        <a href="/PurchaseRequests/Delete/@request?["Id"]" 
+           class="btn btn-danger"
+           onclick="return confirm('Удалить заявку @request?["Number"]?')">🗑️ Удалить</a>
+    }
+}
         </div>
         <a href="/PurchaseRequests" class="btn btn-secondary">Вернуться к списку</a>
     </div>

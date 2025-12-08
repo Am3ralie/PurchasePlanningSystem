@@ -26,6 +26,22 @@
                     <td>@row["CreatedBy"]</td>
                     <td>
                         <a href="/PurchaseRequests/Details/@row["Id"]" class="btn btn-sm btn-info">Просмотр</a>
+
+                        @{
+                            var status = row["Status"].ToString();
+                            var currentUserId = Context.Session.GetString("UserId");
+                            var currentUserRole = Context.Session.GetString("UserRole");
+                            var isOwner = row["CreatedByUserId"].ToString() == currentUserId;
+                            var canEdit = (status == "Draft" && (isOwner || currentUserRole == "Admin"));
+                        }
+
+                        @if (canEdit)
+                        {
+                            <a href="/PurchaseRequests/Edit/@row["Id"]" class="btn btn-sm btn-warning">✏️</a>
+                            <a href="/PurchaseRequests/Delete/@row["Id"]"
+                               class="btn btn-sm btn-danger"
+                               onclick="return confirm('Удалить заявку @row["Number"]?')">🗑️</a>
+                        }
                     </td>
                 </tr>
             }

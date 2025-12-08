@@ -251,5 +251,125 @@ namespace PurchasePlanningSystem.Controllers
 
             return View();
         }
+
+        // РЕДАКТИРОВАНИЕ ЗАЯВКИ (только Draft и только свои, админ - любые)
+        public IActionResult Edit(int id)
+        {
+            if (HttpContext.Session.GetString("UserId") == null)
+                return RedirectToAction("Login", "Auth");
+
+            var userId = int.Parse(HttpContext.Session.GetString("UserId"));
+            var role = HttpContext.Session.GetString("UserRole");
+
+            // Проверяем права
+            var sql = "SELECT * FROM PurchaseRequests WHERE Id = @Id";
+            var request = DatabaseHelper.GetDataTable(sql, new MySqlParameter("@Id", id));
+
+            if (request.Rows.Count == 0) return NotFound();
+
+            var requestRow = request.Rows[0];
+            var requestUserId = Convert.ToInt32(requestRow["CreatedByUserId"]);
+            var status = requestRow["Status"].ToString();
+
+            // Может редактировать? Только черновик и (своё или админ)
+            if (status != "Draft" || (requestUserId != userId && role != "Admin"))
+                return RedirectToAction("Details", new { id });
+
+            ViewBag.Request = requestRow;
+
+            // Продукты для выбора
+            var products = DatabaseHelper.GetDataTable("SELECT Id, Name, Unit FROM Products");
+            ViewBag.Products = products;
+
+            // Существующие строки
+            var itemsSql = @"
+        SELECT pri.*, p.Name as ProductName 
+        FROM PurchaseRequestItems pri
+        LEFT JOIN Products p ON pri.ProductId = p.Id
+        WHERE pri.RequestId = @RequestId";
+
+            ViewBag.Items = DatabaseHelper.GetDataTable(itemsSql, new MySqlParameter("@RequestId", id));
+
+            return View();
+        }
+
+        [HttpPost]
+        public IActionResult Edit(int id, List<int> productIds, List<decimal> quantities, List<DateTime> dates)
+        {
+            // Аналогично Create, но обновляем существующую заявку
+            // (Для простоты удаляем старые строки и вставляем новые)
+            var userId = HttpContext.Session.GetString("UserId");
+            if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Auth");
+
+            using (var connection = DatabaseHelper.GetOpenConnection())
+            using (var transaction = connection.BeginTransaction())
+            {
+                try
+                {
+                    // 1. Удаляем старые строки
+                    var deleteSql = "DELETE FROM PurchaseRequestItems WHERE RequestId = @RequestId";
+                    using (var cmd = new MySqlCommand(deleteSql, connection, transaction))
+                    {
+                        cmd.Parameters.AddWithValue("@RequestId", id);
+                        cmd.ExecuteNonQuery();
+                    }
+
+                    // 2. Добавляем новые строки
+                    for (int i = 0; i < productIds.Count; i++)
+                    {
+                        var insertSql = @"
+                    INSERT INTO PurchaseRequestItems (RequestId, ProductId, Quantity, RequiredDate) 
+                    VALUES (@RequestId, @ProductId, @Quantity, @Date)";
+
+                        using (var cmd = new MySqlCommand(insertSql, connection, transaction))
+                        {
+                            cmd.Parameters.AddWithValue("@RequestId", id);
+                            cmd.Parameters.AddWithValue("@ProductId", productIds[i]);
+                            cmd.Parameters.AddWithValue("@Quantity", quantities[i]);
+                            cmd.Parameters.AddWithValue("@Date", dates[i].Date);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+
+                    transaction.Commit();
+                }
+                catch
+                {
+                    transaction.Rollback();
+                    throw;
+                }
+            }
+
+            return RedirectToAction("Details", new { id });
+        }
+
+        // УДАЛЕНИЕ ЗАЯВКИ (только Draft и только свои, админ - любые)
+        public IActionResult Delete(int id)
+        {
+            if (HttpContext.Session.GetString("UserId") == null)
+                return RedirectToAction("Login", "Auth");
+
+            var userId = int.Parse(HttpContext.Session.GetString("UserId"));
+            var role = HttpContext.Session.GetString("UserRole");
+
+            // Проверяем права
+            var sql = "SELECT CreatedByUserId, Status FROM PurchaseRequests WHERE Id = @Id";
+            var request = DatabaseHelper.GetDataTable(sql, new MySqlParameter("@Id", id));
+
+            if (request.Rows.Count == 0) return NotFound();
+
+            var requestUserId = Convert.ToInt32(request.Rows[0]["CreatedByUserId"]);
+            var status = request.Rows[0]["Status"].ToString();
+
+            if (status != "Draft" || (requestUserId != userId && role != "Admin"))
+                return RedirectToAction("Details", new { id });
+
+            // Удаляем (CASCADE удалит строки заявки)
+            DatabaseHelper.ExecuteNonQuery(
+                "DELETE FROM PurchaseRequests WHERE Id = @Id",
+                new MySqlParameter("@Id", id));
+
+            return RedirectToAction("Index");
+        }
     }
 }

@@ -1,0 +1,82 @@
+﻿@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Редактировать заявку";
+    var request = ViewBag.Request as System.Data.DataRow;
+    var items = ViewBag.Items as System.Data.DataTable;
+}
+<h2>Редактировать заявку @request?["Number"]</h2>
+
+<form method="post" id="editForm">
+    <div id="itemsContainer">
+        @if (items != null && items.Rows.Count > 0)
+        {
+            foreach (System.Data.DataRow row in items.Rows)
+            {
+                <div class="item-row border p-3 mb-3">
+                    <div class="row">
+                        <div class="col-md-5">
+                            <label>Продукт:</label>
+                            <select name="productIds" class="form-control" required>
+                                <option value="">-- Выберите --</option>
+                                @if (ViewBag.Products != null)
+                                {
+                                    foreach (System.Data.DataRow prod in ViewBag.Products.Rows)
+                                    {
+                                        <option value="@prod["Id"]"
+                                                selected="@(prod["Id"].ToString() == row["ProductId"].ToString())">
+                                            @prod["Name"] (@prod["Unit"])
+                                        </option>
+                                    }
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label>Количество:</label>
+                            <input type="number" name="quantities" step="0.001"
+                                   value="@row["Quantity"]" class="form-control" required />
+                        </div>
+                        <div class="col-md-3">
+                            <label>Дата:</label>
+                            <input type="date" name="dates"
+                                   value="@Convert.ToDateTime(row["RequiredDate"]).ToString("yyyy-MM-dd")"
+                                   class="form-control" required />
+                        </div>
+                        <div class="col-md-1 pt-4">
+                            <button type="button" class="btn btn-danger btn-sm remove-row">✕</button>
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    <button type="button" id="addRow" class="btn btn-secondary mb-3">+ Добавить строку</button>
+    <hr />
+    <button type="submit" class="btn btn-primary">Сохранить</button>
+    <a href="/PurchaseRequests/Details/@request?["Id"]" class="btn btn-secondary">Отмена</a>
+</form>
+
+@section Scripts {
+    <script>
+        // Скрипт для динамического добавления/удаления строк (как в Create)
+        document.getElementById('addRow').addEventListener('click', function() {
+            const container = document.getElementById('itemsContainer');
+            const newRow = container.querySelector('.item-row').cloneNode(true);
+
+            // Очищаем значения
+            newRow.querySelectorAll('input, select').forEach(field => {
+                if (field.type !== 'hidden') field.value = '';
+            });
+
+            container.appendChild(newRow);
+        });
+
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove-row')) {
+                if (document.querySelectorAll('.item-row').length > 1) {
+                    e.target.closest('.item-row').remove();
+                }
+            }
+        });
+    </script>
+}
