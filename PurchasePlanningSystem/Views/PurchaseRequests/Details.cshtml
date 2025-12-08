@@ -1,0 +1,33 @@
+﻿@{
+    var request = ViewBag.Request as System.Data.DataRow;
+    var items = ViewBag.Items as System.Data.DataTable;
+}
+<h2>Заявка @request?["Number"]</h2>
+<p>Статус: <span class="badge bg-secondary">@request?["Status"]</span></p>
+<p>Создал: @request?["CreatedByName"]</p>
+<p>Дата: @Convert.ToDateTime(request?["Date"]).ToString("dd.MM.yyyy HH:mm")</p>
+
+<h4>Строки заявки:</h4>
+<table class="table">
+    <thead><tr><th>Продукт</th><th>Количество</th><th>Дата</th></tr></thead>
+    <tbody>
+        @if (items != null)
+        {
+            foreach (System.Data.DataRow row in items.Rows)
+            {
+                <tr>
+                    <td>@row["ProductName"] (@row["Unit"])</td>
+                    <td>@row["Quantity"]</td>
+                    <td>@Convert.ToDateTime(row["RequiredDate"]).ToString("dd.MM.yyyy")</td>
+                </tr>
+            }
+        }
+    </tbody>
+</table>
+
+@if (request?["Status"]?.ToString() == "Draft")
+{
+    <a asp-action="CreateOrder" asp-route-requestId="@request?["Id"]"
+       class="btn btn-warning">Сформировать заказ</a>
+}
+<a asp-action="Index" class="btn btn-secondary">Назад к списку</a>

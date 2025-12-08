@@ -88,5 +88,32 @@ namespace PurchasePlanningSystem.Controllers
             // Редирект на список заявок
             return RedirectToAction("Index");
         }
+
+        public IActionResult Details(int id)
+        {
+            var sql = @"
+        SELECT pr.*, u.FullName as CreatedByName 
+        FROM PurchaseRequests pr
+        LEFT JOIN Users u ON pr.CreatedByUserId = u.Id
+        WHERE pr.Id = @Id";
+
+            var dataTable = DatabaseHelper.GetDataTable(sql, new MySqlParameter("@Id", id));
+
+            if (dataTable.Rows.Count == 0)
+                return NotFound();
+
+            ViewBag.Request = dataTable.Rows[0];
+
+            // Получаем строки заявки
+            var itemsSql = @"
+        SELECT pri.*, p.Name as ProductName, p.Unit
+        FROM PurchaseRequestItems pri
+        LEFT JOIN Products p ON pri.ProductId = p.Id
+        WHERE pri.RequestId = @RequestId";
+
+            ViewBag.Items = DatabaseHelper.GetDataTable(itemsSql, new MySqlParameter("@RequestId", id));
+
+            return View();
+        }
     }
 }

@@ -3,31 +3,71 @@
 }
 <h2>Создание заявки на закупку</h2>
 
-<form method="post">
-    <div class="form-group">
-        <label>Выберите продукт:</label>
-        <select name="productId" class="form-control" required>
-            <option value="">-- Выберите продукт --</option>
-            @if (ViewBag.Products != null)
-            {
-                foreach (System.Data.DataRow row in ViewBag.Products.Rows)
-                {
-                    <option value="@row["Id"]">@row["Name"] (@row["Unit"])</option>
-                }
-            }
-        </select>
+<form method="post" id="requestForm">
+    <div id="itemsContainer">
+        <!-- Первая строка будет тут -->
+        <div class="item-row border p-3 mb-3">
+            <div class="row">
+                <div class="col-md-5">
+                    <label>Продукт:</label>
+                    <select name="productIds[]" class="form-control product-select" required>
+                        <option value="">-- Выберите --</option>
+                        @if (ViewBag.Products != null)
+                        {
+                            foreach (System.Data.DataRow row in ViewBag.Products.Rows)
+                            {
+                                <option value="@row["Id"]">@row["Name"] (@row["Unit"])</option>
+                            }
+                        }
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label>Количество:</label>
+                    <input type="number" name="quantities[]" step="0.001" class="form-control" required />
+                </div>
+                <div class="col-md-3">
+                    <label>Требуемая дата:</label>
+                    <input type="date" name="dates[]" class="form-control" required />
+                </div>
+                <div class="col-md-1 pt-4">
+                    <button type="button" class="btn btn-danger btn-sm remove-row" disabled>✕</button>
+                </div>
+            </div>
+        </div>
     </div>
 
-    <div class="form-group">
-        <label>Количество:</label>
-        <input type="number" name="quantity" step="0.001" class="form-control" required />
-    </div>
-
-    <div class="form-group">
-        <label>Требуемая дата:</label>
-        <input type="date" name="requiredDate" class="form-control" required />
-    </div>
-
+    <button type="button" id="addRow" class="btn btn-secondary mb-3">+ Добавить строку</button>
+    <hr />
     <button type="submit" class="btn btn-primary">Создать заявку</button>
     <a asp-action="Index" class="btn btn-secondary">Отмена</a>
 </form>
+
+@section Scripts {
+    <script>
+        document.getElementById('addRow').addEventListener('click', function() {
+            const container = document.getElementById('itemsContainer');
+            const firstRow = container.querySelector('.item-row');
+            const newRow = firstRow.cloneNode(true);
+
+            // Очищаем значения в новой строке
+            newRow.querySelectorAll('input, select').forEach(field => {
+                if (field.type !== 'hidden') field.value = '';
+                field.removeAttribute('disabled');
+            });
+
+            // Активируем кнопку удаления
+            newRow.querySelector('.remove-row').disabled = false;
+
+            container.appendChild(newRow);
+        });
+
+        // Удаление строки
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove-row')) {
+                if (document.querySelectorAll('.item-row').length > 1) {
+                    e.target.closest('.item-row').remove();
+                }
+            }
+        });
+    </script>
+}
