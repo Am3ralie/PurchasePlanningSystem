@@ -1,11 +1,53 @@
-﻿@{
+﻿@model List<PurchasePlanningSystem.Models.PurchaseRequestViewModel>
+@{
     ViewData["Title"] = "Заявки на закупку";
 }
 <h2>Заявки на закупку</h2>
 <p>Добро пожаловать! Вы вошли как @ViewBag.UserRole</p>
-<div class="list-group">
-    <a href="#" class="list-group-item list-group-item-action">Заявка PR-2024-001 (Черновик)</a>
-    <a href="#" class="list-group-item list-group-item-action">Заявка PR-2024-002 (На утверждении)</a>
-</div>
-<hr />
+
+<table class="table">
+    <thead>
+        <tr>
+            <th>Номер</th>
+            <th>Дата</th>
+            <th>Статус</th>
+            <th>Создал</th>
+            <th>Действия</th>
+        </tr>
+    </thead>
+    <tbody>
+        @if (Model != null && Model.Any())
+        {
+            foreach (var request in Model)
+            {
+                <tr>
+                    <td>@request.Number</td>
+                    <td>@request.Date.ToString("dd.MM.yyyy HH:mm")</td>
+                    <td>
+                        <span class="badge @(request.Status == "Draft" ? "bg-secondary" :
+                                                                        request.Status == "Approved" ? "bg-success" :
+                                                                        "bg-warning")">
+                    @request.Status
+                </span>
+            </td>
+            <td>@request.CreatedBy</td>
+            <td>
+                <a href="#" class="btn btn-sm btn-info">Просмотр</a>
+                @if (request.Status == "Draft")
+                        {
+                            <a href="#" class="btn btn-sm btn-warning">Формировать заказ</a>
+                        }
+                    </td>
+                </tr>
+            }
+        }
+        else
+        {
+            <tr>
+                <td colspan="5" class="text-center">Нет заявок</td>
+            </tr>
+        }
+    </tbody>
+</table>
+
 <a asp-action="Create" class="btn btn-success">Создать новую заявку</a>

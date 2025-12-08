@@ -2,6 +2,7 @@
 using MySql.Data.MySqlClient;
 using Microsoft.Extensions.Configuration;
 
+
 namespace PurchasePlanningSystem.Utils
 {
     public static class DatabaseHelper
