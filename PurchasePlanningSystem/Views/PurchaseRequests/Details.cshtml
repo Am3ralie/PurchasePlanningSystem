@@ -68,12 +68,10 @@
 {
    
     <!-- Добавляем кнопки редактирования/удаления -->
-    @{
         var currentUserId = Context.Session.GetString("UserId");
         var currentUserRole = Context.Session.GetString("UserRole");
         var isOwner = request?["CreatedByUserId"]?.ToString() == currentUserId;
         var canEdit = isOwner || currentUserRole == "Admin";
-    }
     
     @if (canEdit)
     {

@@ -9,19 +9,20 @@ namespace PurchasePlanningSystem.Controllers
         // 1. СПИСОК ЗАЯВОК (просто показывает что есть)
         public IActionResult Index()
         {
-            // Проверка входа
             if (HttpContext.Session.GetString("UserId") == null)
                 return RedirectToAction("Login", "Auth");
 
-            // Берём заявки из БД
+            // ВЫБИРАЕМ ОБА СТОЛБЦА: CreatedBy (имя) И CreatedByUserId (ID для проверки прав)
             var sql = @"
-                SELECT pr.Id, pr.Number, pr.Date, pr.Status, u.FullName as CreatedBy
-                FROM PurchaseRequests pr
-                LEFT JOIN Users u ON pr.CreatedByUserId = u.Id
-                ORDER BY pr.Date DESC";
+        SELECT pr.Id, pr.Number, pr.Date, pr.Status, 
+               u.FullName as CreatedBy,
+               pr.CreatedByUserId as CreatedByUserId  -- ← ДОБАВИЛИ ЭТО
+        FROM PurchaseRequests pr
+        LEFT JOIN Users u ON pr.CreatedByUserId = u.Id
+        ORDER BY pr.Date DESC";
 
             var table = DatabaseHelper.GetDataTable(sql);
-            ViewBag.Requests = table; // Кидаем прямо DataTable во ViewBag
+            ViewBag.Requests = table;
             ViewBag.UserRole = HttpContext.Session.GetString("UserRole");
 
             return View();
@@ -258,7 +259,9 @@ namespace PurchasePlanningSystem.Controllers
             if (HttpContext.Session.GetString("UserId") == null)
                 return RedirectToAction("Login", "Auth");
 
-            var userId = int.Parse(HttpContext.Session.GetString("UserId"));
+            var userIdStr = HttpContext.Session.GetString("UserId");
+            if (string.IsNullOrEmpty(userIdStr)) return RedirectToAction("Login", "Auth");
+            var userId = int.Parse(userIdStr);
             var role = HttpContext.Session.GetString("UserRole");
 
             // Проверяем права
@@ -349,7 +352,9 @@ namespace PurchasePlanningSystem.Controllers
             if (HttpContext.Session.GetString("UserId") == null)
                 return RedirectToAction("Login", "Auth");
 
-            var userId = int.Parse(HttpContext.Session.GetString("UserId"));
+            var userIdStr = HttpContext.Session.GetString("UserId");
+            if (string.IsNullOrEmpty(userIdStr)) return RedirectToAction("Login", "Auth");
+            var userId = int.Parse(userIdStr);
             var role = HttpContext.Session.GetString("UserRole");
 
             // Проверяем права
