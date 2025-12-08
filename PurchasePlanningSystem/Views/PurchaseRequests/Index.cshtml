@@ -28,10 +28,21 @@
 
                 @foreach (DataRow row in requests.Rows)
                 {
-                    var status = row["Status"].ToString();
-                    var createdByUserId = row["CreatedByUserId"].ToString();
+                    // Безопасное получение данных
+                    var status = row["Status"]?.ToString() ?? "";
+                    var createdByUserIdValue = row["CreatedByUserId"];
+                    var createdByUserId = (createdByUserIdValue != DBNull.Value) ? createdByUserIdValue.ToString() : "";
+
                     var isOwner = createdByUserId == currentUserId;
-                    var canEdit = (status == "Draft" && (isOwner || currentUserRole == "Admin"));
+                    var canEdit = false;
+                    if (currentUserRole == "Admin")
+                    {
+                        canEdit = true; // Админ может редактировать/удалять любую заявку
+                    }
+                    else
+                    {
+                        canEdit = (status == "Draft" && isOwner); // Обычный пользователь — только свои черновики
+                    }
 
                     <tr>
                         <td>@row["Number"]</td>
@@ -39,7 +50,8 @@
                         <td>
                             @{
                                 var badgeClass = status == "Draft" ? "bg-secondary" :
-                                status == "Processed" ? "bg-success" : "bg-warning";
+                                status == "Completed" ? "bg-success" :
+                                status == "Processed" ? "bg-info" : "bg-warning";
                             }
                             <span class="badge @badgeClass">@status</span>
                         </td>
