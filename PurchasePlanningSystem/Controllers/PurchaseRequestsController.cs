@@ -4,73 +4,89 @@ using PurchasePlanningSystem.Models;
 using PurchasePlanningSystem.Utils;
 using System.Data;
 
-public class PurchaseRequestsController : Controller
+namespace PurchasePlanningSystem.Controllers
 {
-    public IActionResult Index()
+    public class PurchaseRequestsController : Controller
     {
-        // Проверка авторизации
-        if (HttpContext.Session.GetString("UserId") == null)
-            return RedirectToAction("Login", "Auth");
-
-        // Получаем заявки из БД
-        var sql = @"
-            SELECT pr.Id, pr.Number, pr.Date, pr.Status, u.FullName as CreatedBy
-            FROM PurchaseRequests pr
-            LEFT JOIN Users u ON pr.CreatedByUserId = u.Id
-            ORDER BY pr.Date DESC
-            LIMIT 50";
-
-        var dataTable = DatabaseHelper.GetDataTable(sql);
-        var requests = new List<PurchaseRequestViewModel>();
-
-        foreach (DataRow row in dataTable.Rows)
+        public IActionResult Index()
         {
-            requests.Add(new PurchaseRequestViewModel
+            // Проверка авторизации
+            if (HttpContext.Session.GetString("UserId") == null)
+                return RedirectToAction("Login", "Auth");
+
+            // Получаем заявки из БД
+            var sql = @"
+                SELECT pr.Id, pr.Number, pr.Date, pr.Status, u.FullName as CreatedBy
+                FROM PurchaseRequests pr
+                LEFT JOIN Users u ON pr.CreatedByUserId = u.Id
+                ORDER BY pr.Date DESC
+                LIMIT 50";
+
+            var dataTable = DatabaseHelper.GetDataTable(sql);
+            var requests = new System.Collections.Generic.List<PurchaseRequestViewModel>();
+
+            foreach (DataRow row in dataTable.Rows)
             {
-                Id = Convert.ToInt32(row["Id"]),
-                Number = row["Number"].ToString(),
-                Date = Convert.ToDateTime(row["Date"]),
-                Status = row["Status"].ToString(),
-                CreatedBy = row["CreatedBy"].ToString()
-            });
+                requests.Add(new PurchaseRequestViewModel
+                {
+                    Id = Convert.ToInt32(row["Id"]),
+                    Number = row["Number"].ToString(),
+                    Date = Convert.ToDateTime(row["Date"]),
+                    Status = row["Status"].ToString(),
+                    CreatedBy = row["CreatedBy"].ToString()
+                });
+            }
+
+            ViewBag.UserRole = HttpContext.Session.GetString("UserRole");
+            return View(requests);
         }
 
-        ViewBag.UserRole = HttpContext.Session.GetString("UserRole");
-        return View(requests);
-    }
+        // GET: Создание заявки
+        public IActionResult Create()
+        {
+            if (HttpContext.Session.GetString("UserId") == null)
+                return RedirectToAction("Login", "Auth");
 
-    // GET: Создание заявки
-    public IActionResult Create()
-    {
-        if (HttpContext.Session.GetString("UserId") == null)
-            return RedirectToAction("Login", "Auth");
+            // Получаем список продуктов для выпадающего списка
+            var products = DatabaseHelper.GetDataTable("SELECT Id, Name, Unit FROM Products");
+            ViewBag.Products = products;
 
-        // Получаем список продуктов для выпадающего списка
-        var products = DatabaseHelper.GetDataTable("SELECT Id, Name, Unit FROM Products");
-        ViewBag.Products = products;
+            return View();
+        }
 
-        return View();
-    }
+        // POST: Создание заявки (упрощённая версия - один товар)
+        [HttpPost]
+        public IActionResult Create(int productId, decimal quantity, DateTime requiredDate)
+        {
+            var userId = HttpContext.Session.GetString("UserId");
+            var number = "PR-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
 
-    // POST: Создание заявки
-    [HttpPost]
-    public IActionResult Create(string productIds, string quantities, string dates)
-    {
-        // Простейшая реализация - сохраняем одну строку заявки
-        var userId = HttpContext.Session.GetString("UserId");
-        var number = "PR-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            // 1. Создаём заявку
+            var sqlRequest = @"
+                INSERT INTO PurchaseRequests (Number, Date, Status, CreatedByUserId) 
+                VALUES (@Number, NOW(), 'Draft', @UserId);
+                SELECT LAST_INSERT_ID();";
 
-        // В реальном приложении здесь должна быть транзакция и обработка массива товаров
-        var sql = @"
-            INSERT INTO PurchaseRequests (Number, Date, Status, CreatedByUserId) 
-            VALUES (@Number, NOW(), 'Draft', @UserId);
-            SELECT LAST_INSERT_ID();";
+            var requestId = DatabaseHelper.ExecuteScalar(sqlRequest,
+                new MySqlParameter("@Number", number),
+                new MySqlParameter("@UserId", Convert.ToInt32(userId)));
 
-        var requestId = DatabaseHelper.ExecuteScalar(sql,
-            new MySqlParameter("@Number", number),
-            new MySqlParameter("@UserId", userId));
+            // 2. Добавляем строку в заявку
+            if (requestId != null)
+            {
+                var sqlItem = @"
+                    INSERT INTO PurchaseRequestItems (RequestId, ProductId, Quantity, RequiredDate) 
+                    VALUES (@RequestId, @ProductId, @Quantity, @RequiredDate)";
 
-        // Редирект на список заявок
-        return RedirectToAction("Index");
+                DatabaseHelper.ExecuteNonQuery(sqlItem,
+                    new MySqlParameter("@RequestId", requestId),
+                    new MySqlParameter("@ProductId", productId),
+                    new MySqlParameter("@Quantity", quantity),
+                    new MySqlParameter("@RequiredDate", requiredDate));
+            }
+
+            // Редирект на список заявок
+            return RedirectToAction("Index");
+        }
     }
 }
