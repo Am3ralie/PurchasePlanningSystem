@@ -165,5 +165,34 @@ namespace PurchasePlanningSystem.Controllers
 
             return Content($"Заказ {orderNumber} создан! ID: {orderId}");
         }
+
+        public IActionResult OrderDetails(int id, string message = "")
+        {
+            if (!string.IsNullOrEmpty(message)) ViewBag.Message = message;
+
+            var sql = @"
+        SELECT po.*, s.Name as SupplierName, u.FullName as CreatedByName, pr.Number as RequestNumber
+        FROM PurchaseOrders po
+        LEFT JOIN Suppliers s ON po.SupplierId = s.Id
+        LEFT JOIN Users u ON po.CreatedByUserId = u.Id
+        LEFT JOIN PurchaseRequests pr ON po.RequestId = pr.Id
+        WHERE po.Id = @Id";
+
+            var orderTable = DatabaseHelper.GetDataTable(sql, new MySqlParameter("@Id", id));
+            if (orderTable.Rows.Count == 0) return Content("Заказ не найден");
+
+            ViewBag.Order = orderTable.Rows[0];
+
+            // Строки заказа
+            var itemsSql = @"
+        SELECT poi.*, p.Name as ProductName, p.Unit
+        FROM PurchaseOrderItems poi
+        LEFT JOIN Products p ON poi.ProductId = p.Id
+        WHERE poi.OrderId = @OrderId";
+
+            ViewBag.Items = DatabaseHelper.GetDataTable(itemsSql, new MySqlParameter("@OrderId", id));
+
+            return View();
+        }
     }
 }

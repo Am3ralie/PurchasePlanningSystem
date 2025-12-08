@@ -34,3 +34,13 @@
        class="btn btn-warning">Сформировать заказ</a>
 }
 <a asp-action="Index" class="btn btn-secondary">Назад к списку</a>
+
+<hr />
+<div>
+    <a href="/PurchaseRequests" class="btn btn-secondary">← Назад к списку</a>
+    @if (ViewBag.Request["Status"]?.ToString() == "Draft")
+    {
+        <a href="/PurchaseRequests/CreateOrder?requestId=@ViewBag.Request["Id"]"
+           class="btn btn-warning float-end">📦 Сформировать заказ</a>
+    }
+</div>

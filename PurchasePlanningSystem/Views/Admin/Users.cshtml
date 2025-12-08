@@ -1,0 +1,21 @@
+﻿@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Управление пользователями";
+}
+<h2>Пользователи</h2>
+<a href="/Admin/CreateUser" class="btn btn-primary mb-3">+ Добавить пользователя</a>
+<table class="table">
+    <thead><tr><th>ID</th><th>Логин</th><th>Имя</th><th>Роль</th><th>Активен</th></tr></thead>
+    <tbody>
+        @foreach (System.Data.DataRow row in Model.Rows)
+        {
+            <tr>
+                <td>@row["Id"]</td>
+                <td>@row["Login"]</td>
+                <td>@row["FullName"]</td>
+                <td><span class="badge @(row["Role"].ToString() == "Admin" ? "bg-danger" : "bg-info")">@row["Role"]</span></td>
+                <td>@(row["IsActive"].ToString() == "True" ? "✅" : "❌")</td>
+            </tr>
+        }
+    </tbody>
+</table>

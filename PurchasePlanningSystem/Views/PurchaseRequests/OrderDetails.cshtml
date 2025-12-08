@@ -1,0 +1,36 @@
+﻿@{
+    Layout = "_Layout";
+    ViewData["Title"] = "Заказ поставщику";
+    var order = ViewBag.Order as System.Data.DataRow;
+    var items = ViewBag.Items as System.Data.DataTable;
+}
+@if (ViewBag.Message != null)
+{
+    <div class="alert alert-success">@ViewBag.Message</div>
+}
+<h2>Заказ @order?["Number"]</h2>
+<p><strong>Поставщик:</strong> @order?["SupplierName"]</p>
+<p><strong>На основе заявки:</strong> @order?["RequestNumber"]</p>
+<p><strong>Статус:</strong> <span class="badge bg-info">@order?["Status"]</span></p>
+<p><strong>Общая сумма:</strong> @Convert.ToDecimal(order?["TotalAmount"]).ToString("C")</p>
+
+<h4>Строки заказа:</h4>
+<table class="table">
+    <thead><tr><th>Продукт</th><th>Кол-во</th><th>Цена</th><th>Сумма</th></tr></thead>
+    <tbody>
+        @if (items != null)
+        {
+            foreach (System.Data.DataRow row in items.Rows)
+            {
+                <tr>
+                    <td>@row["ProductName"] (@row["Unit"])</td>
+                    <td>@row["Quantity"]</td>
+                    <td>@Convert.ToDecimal(row["Price"]).ToString("C")</td>
+                    <td>@Convert.ToDecimal(row["Total"]).ToString("C")</td>
+                </tr>
+            }
+        }
+    </tbody>
+</table>
+
+<a href="/PurchaseRequests" class="btn btn-secondary">← К списку заявок</a>
