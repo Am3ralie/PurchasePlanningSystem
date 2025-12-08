@@ -1,7 +1,7 @@
 ﻿@model System.Data.DataTable
 @{
     Layout = "_Layout";
-    ViewData["Title"] = "Управление пользователями";
+    ViewData["Title"] = "Пользователи";
 }
 <div class="container">
     <h2>Пользователи системы</h2>
@@ -48,9 +48,13 @@
                     </td>
                     <td>
                         <a href="/Admin/EditUser/@row["Id"]" class="btn btn-sm btn-warning">✏️</a>
-                        <a href="/Admin/DeleteUser/@row["Id"]"
-                           class="btn btn-sm btn-danger"
-                           onclick="return confirm('Удалить пользователя @row["Login"]?')">🗑️</a>
+
+                        <form method="post" action="/Admin/DeleteUser/@row["Id"]" style="display: inline;">
+                            <button type="submit" class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Удалить пользователя @row["Login"]?')">
+                                🗑️
+                            </button>
+                        </form>
                     </td>
                 </tr>
             }

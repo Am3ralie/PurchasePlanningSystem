@@ -20,28 +20,25 @@
                 </tr>
             </thead>
             <tbody>
-                @{
-                    var requests = (DataTable)ViewBag.Requests;
-                    var currentUserId = Context.Session.GetString("UserId");
-                    var currentUserRole = Context.Session.GetString("UserRole");
-                }
-
-                @foreach (DataRow row in requests.Rows)
+                @foreach (System.Data.DataRow row in ((DataTable)ViewBag.Requests).Rows)
                 {
-                    // Безопасное получение данных
-                    var status = row["Status"]?.ToString() ?? "";
-                    var createdByUserIdValue = row["CreatedByUserId"];
-                    var createdByUserId = (createdByUserIdValue != DBNull.Value) ? createdByUserIdValue.ToString() : "";
+                    // Простые переменные
+                    var status = row["Status"].ToString();
+                    var createdByUserId = row["CreatedByUserId"].ToString();
+                    var currentUserId = ViewBag.UserId;
+                    var currentUserRole = ViewBag.UserRole;
 
                     var isOwner = createdByUserId == currentUserId;
                     var canEdit = false;
+
+                    // Тупая логика: админ может всё, пользователь — только свои черновики
                     if (currentUserRole == "Admin")
                     {
-                        canEdit = true; // Админ может редактировать/удалять любую заявку
+                        canEdit = true;
                     }
                     else
                     {
-                        canEdit = (status == "Draft" && isOwner); // Обычный пользователь — только свои черновики
+                        canEdit = (status == "Draft" && isOwner);
                     }
 
                     <tr>
@@ -49,9 +46,9 @@
                         <td>@Convert.ToDateTime(row["Date"]).ToString("dd.MM.yyyy HH:mm")</td>
                         <td>
                             @{
-                                var badgeClass = status == "Draft" ? "bg-secondary" :
-                                status == "Completed" ? "bg-success" :
-                                status == "Processed" ? "bg-info" : "bg-warning";
+                                var badgeClass = "bg-secondary";
+                                if (status == "Completed") badgeClass = "bg-success";
+                                else if (status == "Processed") badgeClass = "bg-info";
                             }
                             <span class="badge @badgeClass">@status</span>
                         </td>
@@ -62,9 +59,13 @@
                             @if (canEdit)
                             {
                                 <a href="/PurchaseRequests/Edit/@row["Id"]" class="btn btn-sm btn-warning">✏️</a>
-                                <a href="/PurchaseRequests/Delete/@row["Id"]"
-                                   class="btn btn-sm btn-danger"
-                                   onclick="return confirm('Удалить заявку @row["Number"]?')">🗑️</a>
+
+                                <form method="post" action="/PurchaseRequests/Delete/@row["Id"]" style="display: inline;">
+                                    <button type="submit" class="btn btn-sm btn-danger"
+                                            onclick="return confirm('Удалить заявку @row["Number"]?')">
+                                        🗑️
+                                    </button>
+                                </form>
                             }
                         </td>
                     </tr>

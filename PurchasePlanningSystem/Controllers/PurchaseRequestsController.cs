@@ -1,47 +1,44 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using PurchasePlanningSystem.Utils;
 using MySql.Data.MySqlClient;
+using System.Data;
 
 namespace PurchasePlanningSystem.Controllers
 {
     public class PurchaseRequestsController : Controller
     {
-        // 1. СПИСОК ЗАЯВОК (просто показывает что есть)
+        // 1. СПИСОК ЗАЯВОК
         public IActionResult Index()
         {
             if (HttpContext.Session.GetString("UserId") == null)
                 return RedirectToAction("Login", "Auth");
 
-            // ВЫБИРАЕМ ОБА СТОЛБЦА: CreatedBy (имя) И CreatedByUserId (ID для проверки прав)
             var sql = @"
-        SELECT pr.Id, pr.Number, pr.Date, pr.Status, 
-               u.FullName as CreatedBy,
-               pr.CreatedByUserId as CreatedByUserId  -- ← ДОБАВИЛИ ЭТО
-        FROM PurchaseRequests pr
-        LEFT JOIN Users u ON pr.CreatedByUserId = u.Id
-        ORDER BY pr.Date DESC";
+                SELECT pr.Id, pr.Number, pr.Date, pr.Status, 
+                       u.FullName as CreatedBy,
+                       pr.CreatedByUserId
+                FROM PurchaseRequests pr
+                LEFT JOIN Users u ON pr.CreatedByUserId = u.Id
+                ORDER BY pr.Date DESC";
 
-            var table = DatabaseHelper.GetDataTable(sql);
-            ViewBag.Requests = table;
+            ViewBag.Requests = DatabaseHelper.GetDataTable(sql);
             ViewBag.UserRole = HttpContext.Session.GetString("UserRole");
+            ViewBag.UserId = HttpContext.Session.GetString("UserId");
 
             return View();
         }
 
-        // 2. ФОРМА СОЗДАНИЯ (просто показывает форму)
+        // 2. ФОРМА СОЗДАНИЯ
         public IActionResult Create()
         {
             if (HttpContext.Session.GetString("UserId") == null)
                 return RedirectToAction("Login", "Auth");
 
-            // Берём продукты
-            var products = DatabaseHelper.GetDataTable("SELECT Id, Name, Unit FROM Products");
-            ViewBag.Products = products;
-
+            ViewBag.Products = DatabaseHelper.GetDataTable("SELECT Id, Name, Unit FROM Products");
             return View();
         }
 
-        // 3. СОХРАНЕНИЕ ЗАЯВКИ (самый тупой вариант - ОДНА строка)
+        // 3. СОХРАНЕНИЕ ЗАЯВКИ
         [HttpPost]
         public IActionResult Create(int productIds, decimal quantities, DateTime dates)
         {
@@ -49,7 +46,6 @@ namespace PurchasePlanningSystem.Controllers
             if (string.IsNullOrEmpty(userId))
                 return RedirectToAction("Login", "Auth");
 
-            // Генерируем номер
             var number = "PR-" + DateTime.Now.ToString("yyyyMMdd-HHmm");
 
             // 1. Вставляем заявку
@@ -62,7 +58,7 @@ namespace PurchasePlanningSystem.Controllers
                 new MySqlParameter("@Number", number),
                 new MySqlParameter("@UserId", int.Parse(userId)));
 
-            // 2. Вставляем ОДНУ строку заявки
+            // 2. Вставляем строку
             var sqlItem = @"
                 INSERT INTO PurchaseRequestItems (RequestId, ProductId, Quantity, RequiredDate) 
                 VALUES (@RequestId, @ProductId, @Quantity, @Date)";
@@ -71,14 +67,12 @@ namespace PurchasePlanningSystem.Controllers
                 new MySqlParameter("@RequestId", requestId),
                 new MySqlParameter("@ProductId", productIds),
                 new MySqlParameter("@Quantity", quantities),
-                new MySqlParameter("@Date", dates.Date) // Только дата!
-            );
+                new MySqlParameter("@Date", dates.Date));
 
-            // 3. Переходим к просмотру этой заявки
             return RedirectToAction("Details", new { id = requestId });
         }
 
-        // 4. ПРОСМОТР ЗАЯВКИ (просто показывает)
+        // 4. ПРОСМОТР ЗАЯВКИ (ТУПОЙ ВАРИАНТ)
         public IActionResult Details(int id)
         {
             if (HttpContext.Session.GetString("UserId") == null)
@@ -92,206 +86,139 @@ namespace PurchasePlanningSystem.Controllers
                 WHERE pr.Id = @Id";
 
             var requestTable = DatabaseHelper.GetDataTable(sql, new MySqlParameter("@Id", id));
-
             if (requestTable.Rows.Count == 0)
                 return Content("Заявка не найдена");
 
-            ViewBag.Request = requestTable.Rows[0];
+            var row = requestTable.Rows[0];
 
-            // Берём её строки
+            // Всё в ViewBag (тупо, но понятно)
+            ViewBag.Id = row["Id"];
+            ViewBag.Number = row["Number"];
+            ViewBag.Status = row["Status"].ToString();
+            ViewBag.CreatedByName = row["CreatedByName"];
+            ViewBag.CreatedDate = Convert.ToDateTime(row["Date"]).ToString("dd.MM.yyyy HH:mm");
+            ViewBag.Comments = string.IsNullOrEmpty(row["Comments"]?.ToString()) ? "нет" : row["Comments"];
+            ViewBag.CreatedByUserId = row["CreatedByUserId"];
+
+            // Логика кнопок (в контроллере, а не в View)
+            var currentUserId = HttpContext.Session.GetString("UserId");
+            var currentUserRole = HttpContext.Session.GetString("UserRole");
+            var isOwner = row["CreatedByUserId"].ToString() == currentUserId;
+
+            ViewBag.ShowEditButtons = (ViewBag.Status == "Draft" && (isOwner || currentUserRole == "Admin"));
+            ViewBag.ShowReopenButton = (ViewBag.Status == "Completed" && currentUserRole == "Admin");
+
+            // Строки заявки
             var itemsSql = @"
                 SELECT pri.*, p.Name as ProductName, p.Unit
                 FROM PurchaseRequestItems pri
                 LEFT JOIN Products p ON pri.ProductId = p.Id
                 WHERE pri.RequestId = @RequestId";
 
-            ViewBag.Items = DatabaseHelper.GetDataTable(itemsSql, new MySqlParameter("@RequestId", id));
+            var itemsTable = DatabaseHelper.GetDataTable(itemsSql, new MySqlParameter("@RequestId", id));
+            ViewBag.HasItems = (itemsTable.Rows.Count > 0);
+
+            // Делаем простой список
+            var itemsList = new List<object>();
+            foreach (DataRow itemRow in itemsTable.Rows)
+            {
+                itemsList.Add(new
+                {
+                    ProductName = itemRow["ProductName"],
+                    Quantity = itemRow["Quantity"],
+                    Unit = itemRow["Unit"],
+                    RequiredDate = Convert.ToDateTime(itemRow["RequiredDate"]).ToString("dd.MM.yyyy")
+                });
+            }
+            ViewBag.Items = itemsList;
 
             return View();
         }
 
-        // 5. GET версия - страница подтверждения создания заказа
-        [HttpGet]
-        public IActionResult CreateOrder(int requestId, bool confirm = false)
-        {
-            if (HttpContext.Session.GetString("UserId") == null)
-                return RedirectToAction("Login", "Auth");
-
-            // Если confirm=true, сразу создаём заказ (для прямой ссылки из Index)
-            if (confirm)
-            {
-                return CreateOrderPost(requestId);
-            }
-
-            // Иначе показываем страницу подтверждения
-            ViewBag.RequestId = requestId;
-            return View("ConfirmOrder");
-        }
-
-        // 6. POST версия - создание заказа
+        // 5. ИЗМЕНЕНИЕ СТАТУСА
         [HttpPost]
-        public IActionResult CreateOrder(int requestId)
+        public IActionResult UpdateStatus(int id, string newStatus)
         {
-            return CreateOrderPost(requestId);
-        }
-
-        // 7. Общая логика создания заказа
-        private IActionResult CreateOrderPost(int requestId)
-        {
-            if (HttpContext.Session.GetString("UserId") == null)
-                return RedirectToAction("Login", "Auth");
-
-            // Берём заявку
-            var requestSql = "SELECT * FROM PurchaseRequests WHERE Id = @Id";
-            var request = DatabaseHelper.GetDataTable(requestSql, new MySqlParameter("@Id", requestId));
-
-            if (request.Rows.Count == 0)
-                return Content("Заявка не найдена");
-
-            // Проверяем, что заявка в статусе Draft
-            if (request.Rows[0]["Status"].ToString() != "Draft")
+            try
             {
-                return Content("Заявка уже обработана или отменена");
+                // 1. Проверка авторизации
+                if (HttpContext.Session.GetString("UserId") == null)
+                    return RedirectToAction("Login", "Auth");
+
+                var currentUserId = HttpContext.Session.GetString("UserId");
+                var currentUserRole = HttpContext.Session.GetString("UserRole");
+
+                // 2. Получаем данные заявки
+                var checkSql = "SELECT Status, CreatedByUserId FROM PurchaseRequests WHERE Id = @Id";
+                var request = DatabaseHelper.GetDataTable(checkSql,
+                    new MySqlParameter("@Id", id));
+
+                if (request.Rows.Count == 0)
+                {
+                    TempData["Error"] = "Заявка не найдена";
+                    return RedirectToAction("Index");
+                }
+
+                var currentStatus = request.Rows[0]["Status"].ToString();
+                var createdByUserId = request.Rows[0]["CreatedByUserId"].ToString();
+
+                // 3. Проверяем права
+                bool canChange = false;
+
+                if (newStatus == "Completed" && currentStatus == "Draft")
+                {
+                    // Завершать может владелец или админ
+                    canChange = (createdByUserId == currentUserId) || (currentUserRole == "Admin");
+                }
+                else if (newStatus == "Draft" && currentStatus == "Completed")
+                {
+                    // Возвращать в работу может только админ
+                    canChange = (currentUserRole == "Admin");
+                }
+
+                if (!canChange)
+                {
+                    TempData["Error"] = "Нет прав для изменения статуса";
+                    return RedirectToAction("Details", new { id });
+                }
+
+                // 4. Меняем статус
+                var updateSql = "UPDATE PurchaseRequests SET Status = @Status WHERE Id = @Id";
+                DatabaseHelper.ExecuteNonQuery(updateSql,
+                    new MySqlParameter("@Status", newStatus),
+                    new MySqlParameter("@Id", id));
+
+                TempData["Message"] = $"Статус заявки изменён на '{newStatus}'";
+                return RedirectToAction("Details", new { id });
             }
-
-            // Берём первого поставщика
-            var supplierSql = "SELECT Id FROM Suppliers WHERE IsActive = TRUE LIMIT 1";
-            var supplierId = DatabaseHelper.ExecuteScalar(supplierSql);
-
-            if (supplierId == null)
-                return Content("Нет активных поставщиков");
-
-            // Создаём номер заказа
-            var orderNumber = "PO-" + DateTime.Now.ToString("yyyyMMdd-HHmm");
-
-            int orderId = 0;
-
-            // Используем транзакцию
-            using (var connection = DatabaseHelper.GetOpenConnection())
-            using (var transaction = connection.BeginTransaction())
+            catch (Exception ex)
             {
-                try
-                {
-                    // 1. Создаём заказ
-                    var orderSql = @"
-                        INSERT INTO PurchaseOrders (Number, Date, Status, SupplierId, RequestId, CreatedByUserId) 
-                        VALUES (@Number, NOW(), 'Draft', @SupplierId, @RequestId, @UserId);
-                        SELECT LAST_INSERT_ID();";
-
-                    using (var cmd = new MySqlCommand(orderSql, connection, transaction))
-                    {
-                        cmd.Parameters.AddWithValue("@Number", orderNumber);
-                        cmd.Parameters.AddWithValue("@SupplierId", supplierId);
-                        cmd.Parameters.AddWithValue("@RequestId", requestId);
-                        cmd.Parameters.AddWithValue("@UserId", int.Parse(HttpContext.Session.GetString("UserId")));
-                        orderId = Convert.ToInt32(cmd.ExecuteScalar());
-                    }
-
-                    // 2. Копируем строки из заявки в заказ (с ценой = 0)
-                    var copyItemsSql = @"
-                        INSERT INTO PurchaseOrderItems (OrderId, ProductId, Quantity, Price)
-                        SELECT @OrderId, pri.ProductId, pri.Quantity, 0
-                        FROM PurchaseRequestItems pri
-                        WHERE pri.RequestId = @RequestId";
-
-                    using (var cmd = new MySqlCommand(copyItemsSql, connection, transaction))
-                    {
-                        cmd.Parameters.AddWithValue("@OrderId", orderId);
-                        cmd.Parameters.AddWithValue("@RequestId", requestId);
-                        cmd.ExecuteNonQuery();
-                    }
-
-                    // 3. Меняем статус заявки
-                    using (var cmd = new MySqlCommand(
-                        "UPDATE PurchaseRequests SET Status = 'Processed' WHERE Id = @Id",
-                        connection, transaction))
-                    {
-                        cmd.Parameters.AddWithValue("@Id", requestId);
-                        cmd.ExecuteNonQuery();
-                    }
-
-                    transaction.Commit();
-                }
-                catch (Exception ex)
-                {
-                    transaction.Rollback();
-                    return Content($"Ошибка при создании заказа: {ex.Message}");
-                }
+                // Простейшая обработка ошибки
+                TempData["Error"] = $"Ошибка: {ex.Message}";
+                return RedirectToAction("Details", new { id });
             }
-
-            // Редирект на страницу заказа с сообщением об успехе
-            return RedirectToAction("OrderDetails", new { id = orderId, message = $"Заказ {orderNumber} успешно создан!" });
         }
 
-        // 8. ПРОСМОТР ЗАКАЗА
-        public IActionResult OrderDetails(int id, string message = "")
-        {
-            if (!string.IsNullOrEmpty(message)) ViewBag.Message = message;
-
-            var sql = @"
-                SELECT po.*, s.Name as SupplierName, u.FullName as CreatedByName, pr.Number as RequestNumber
-                FROM PurchaseOrders po
-                LEFT JOIN Suppliers s ON po.SupplierId = s.Id
-                LEFT JOIN Users u ON po.CreatedByUserId = u.Id
-                LEFT JOIN PurchaseRequests pr ON po.RequestId = pr.Id
-                WHERE po.Id = @Id";
-
-            var orderTable = DatabaseHelper.GetDataTable(sql, new MySqlParameter("@Id", id));
-            if (orderTable.Rows.Count == 0) return Content("Заказ не найден");
-
-            ViewBag.Order = orderTable.Rows[0];
-
-            // Строки заказа
-            var itemsSql = @"
-                SELECT poi.*, p.Name as ProductName, p.Unit
-                FROM PurchaseOrderItems poi
-                LEFT JOIN Products p ON poi.ProductId = p.Id
-                WHERE poi.OrderId = @OrderId";
-
-            ViewBag.Items = DatabaseHelper.GetDataTable(itemsSql, new MySqlParameter("@OrderId", id));
-
-            return View();
-        }
-
-        // РЕДАКТИРОВАНИЕ ЗАЯВКИ (только Draft и только свои, админ - любые)
+        // 6. РЕДАКТИРОВАНИЕ
         public IActionResult Edit(int id)
         {
             if (HttpContext.Session.GetString("UserId") == null)
                 return RedirectToAction("Login", "Auth");
 
-            var userIdStr = HttpContext.Session.GetString("UserId");
-            if (string.IsNullOrEmpty(userIdStr)) return RedirectToAction("Login", "Auth");
-            var userId = int.Parse(userIdStr);
-            var role = HttpContext.Session.GetString("UserRole");
-
-            // Проверяем права
-            var sql = "SELECT * FROM PurchaseRequests WHERE Id = @Id";
-            var request = DatabaseHelper.GetDataTable(sql, new MySqlParameter("@Id", id));
+            // Просто показываем форму редактирования
+            var request = DatabaseHelper.GetDataTable(
+                "SELECT * FROM PurchaseRequests WHERE Id = @Id",
+                new MySqlParameter("@Id", id));
 
             if (request.Rows.Count == 0) return NotFound();
 
-            var requestRow = request.Rows[0];
-            var requestUserId = Convert.ToInt32(requestRow["CreatedByUserId"]);
-            var status = requestRow["Status"].ToString();
+            ViewBag.Request = request.Rows[0];
+            ViewBag.Products = DatabaseHelper.GetDataTable("SELECT Id, Name, Unit FROM Products");
 
-            // Может редактировать? Только черновик и (своё или админ)
-            if (status != "Draft" || (requestUserId != userId && role != "Admin"))
-                return RedirectToAction("Details", new { id });
-
-            ViewBag.Request = requestRow;
-
-            // Продукты для выбора
-            var products = DatabaseHelper.GetDataTable("SELECT Id, Name, Unit FROM Products");
-            ViewBag.Products = products;
-
-            // Существующие строки
-            var itemsSql = @"
-        SELECT pri.*, p.Name as ProductName 
-        FROM PurchaseRequestItems pri
-        LEFT JOIN Products p ON pri.ProductId = p.Id
-        WHERE pri.RequestId = @RequestId";
-
-            ViewBag.Items = DatabaseHelper.GetDataTable(itemsSql, new MySqlParameter("@RequestId", id));
+            var items = DatabaseHelper.GetDataTable(
+                "SELECT * FROM PurchaseRequestItems WHERE RequestId = @Id",
+                new MySqlParameter("@Id", id));
+            ViewBag.Items = items;
 
             return View();
         }
@@ -299,77 +226,54 @@ namespace PurchasePlanningSystem.Controllers
         [HttpPost]
         public IActionResult Edit(int id, List<int> productIds, List<decimal> quantities, List<DateTime> dates)
         {
-            // Аналогично Create, но обновляем существующую заявку
-            // (Для простоты удаляем старые строки и вставляем новые)
-            var userId = HttpContext.Session.GetString("UserId");
-            if (string.IsNullOrEmpty(userId)) return RedirectToAction("Login", "Auth");
+            if (HttpContext.Session.GetString("UserId") == null)
+                return RedirectToAction("Login", "Auth");
 
-            using (var connection = DatabaseHelper.GetOpenConnection())
-            using (var transaction = connection.BeginTransaction())
+            // Удаляем старые строки
+            DatabaseHelper.ExecuteNonQuery(
+                "DELETE FROM PurchaseRequestItems WHERE RequestId = @Id",
+                new MySqlParameter("@Id", id));
+
+            // Добавляем новые
+            for (int i = 0; i < productIds.Count; i++)
             {
-                try
-                {
-                    // 1. Удаляем старые строки
-                    var deleteSql = "DELETE FROM PurchaseRequestItems WHERE RequestId = @RequestId";
-                    using (var cmd = new MySqlCommand(deleteSql, connection, transaction))
-                    {
-                        cmd.Parameters.AddWithValue("@RequestId", id);
-                        cmd.ExecuteNonQuery();
-                    }
-
-                    // 2. Добавляем новые строки
-                    for (int i = 0; i < productIds.Count; i++)
-                    {
-                        var insertSql = @"
-                    INSERT INTO PurchaseRequestItems (RequestId, ProductId, Quantity, RequiredDate) 
-                    VALUES (@RequestId, @ProductId, @Quantity, @Date)";
-
-                        using (var cmd = new MySqlCommand(insertSql, connection, transaction))
-                        {
-                            cmd.Parameters.AddWithValue("@RequestId", id);
-                            cmd.Parameters.AddWithValue("@ProductId", productIds[i]);
-                            cmd.Parameters.AddWithValue("@Quantity", quantities[i]);
-                            cmd.Parameters.AddWithValue("@Date", dates[i].Date);
-                            cmd.ExecuteNonQuery();
-                        }
-                    }
-
-                    transaction.Commit();
-                }
-                catch
-                {
-                    transaction.Rollback();
-                    throw;
-                }
+                DatabaseHelper.ExecuteNonQuery(
+                    @"INSERT INTO PurchaseRequestItems (RequestId, ProductId, Quantity, RequiredDate) 
+                      VALUES (@RequestId, @ProductId, @Quantity, @Date)",
+                    new MySqlParameter("@RequestId", id),
+                    new MySqlParameter("@ProductId", productIds[i]),
+                    new MySqlParameter("@Quantity", quantities[i]),
+                    new MySqlParameter("@Date", dates[i].Date)
+                );
             }
 
             return RedirectToAction("Details", new { id });
         }
 
-        // УДАЛЕНИЕ ЗАЯВКИ (только Draft и только свои, админ - любые)
+        // 7. УДАЛЕНИЕ
+        [HttpPost]
         public IActionResult Delete(int id)
         {
             if (HttpContext.Session.GetString("UserId") == null)
                 return RedirectToAction("Login", "Auth");
 
-            var userIdStr = HttpContext.Session.GetString("UserId");
-            if (string.IsNullOrEmpty(userIdStr)) return RedirectToAction("Login", "Auth");
-            var userId = int.Parse(userIdStr);
-            var role = HttpContext.Session.GetString("UserRole");
+            var currentUserId = HttpContext.Session.GetString("UserId");
+            var currentUserRole = HttpContext.Session.GetString("UserRole");
 
             // Проверяем права
-            var sql = "SELECT CreatedByUserId, Status FROM PurchaseRequests WHERE Id = @Id";
-            var request = DatabaseHelper.GetDataTable(sql, new MySqlParameter("@Id", id));
+            var request = DatabaseHelper.GetDataTable(
+                "SELECT Status, CreatedByUserId FROM PurchaseRequests WHERE Id = @Id",
+                new MySqlParameter("@Id", id));
 
             if (request.Rows.Count == 0) return NotFound();
 
-            var requestUserId = Convert.ToInt32(request.Rows[0]["CreatedByUserId"]);
             var status = request.Rows[0]["Status"].ToString();
+            var createdBy = request.Rows[0]["CreatedByUserId"].ToString();
 
-            if (status != "Draft" || (requestUserId != userId && role != "Admin"))
+            if (status != "Draft" || (createdBy != currentUserId && currentUserRole != "Admin"))
                 return RedirectToAction("Details", new { id });
 
-            // Удаляем (CASCADE удалит строки заявки)
+            // Удаляем
             DatabaseHelper.ExecuteNonQuery(
                 "DELETE FROM PurchaseRequests WHERE Id = @Id",
                 new MySqlParameter("@Id", id));
