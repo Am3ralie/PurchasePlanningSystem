@@ -1,0 +1,11 @@
+﻿@{
+    ViewData["Title"] = "Заявки на закупку";
+}
+<h2>Заявки на закупку</h2>
+<p>Добро пожаловать! Вы вошли как @ViewBag.UserRole</p>
+<div class="list-group">
+    <a href="#" class="list-group-item list-group-item-action">Заявка PR-2024-001 (Черновик)</a>
+    <a href="#" class="list-group-item list-group-item-action">Заявка PR-2024-002 (На утверждении)</a>
+</div>
+<hr />
+<a asp-action="Create" class="btn btn-success">Создать новую заявку</a>

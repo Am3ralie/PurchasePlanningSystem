@@ -1,0 +1,82 @@
+@startuml
+!define table(x) class x << (T,#FFAAAA) >>
+!define primary_key(x) <b><color:red>#x</color></b>
+!define foreign_key(x) <color:blue>#x</color>
+
+hide methods
+hide stereotypes
+
+table(Users) {
+  primary_key(Id) : INT
+  Login : VARCHAR(50) **<< уникальный >>
+  PasswordHash : VARCHAR(255)
+  FullName : VARCHAR(100)
+  Role : VARCHAR(20) **<< 'Admin', 'Manager' >>
+  IsActive : BOOL
+}
+
+table(Suppliers) {
+  primary_key(Id) : INT
+  Name : VARCHAR(100)
+  ContactInfo : TEXT
+  IsActive : BOOL
+}
+
+table(Products) {
+  primary_key(Id) : INT
+  Name : VARCHAR(100)
+  Unit : VARCHAR(20)
+  Category : VARCHAR(50)
+}
+
+table(PurchaseRequests) {
+  primary_key(Id) : INT
+  Number : VARCHAR(20)
+  Date : DATETIME
+  Status : VARCHAR(30) **<< 'Draft', 'Approved', 'Processed' >>
+  foreign_key(CreatedByUserId) : INT
+  foreign_key(ApprovedByUserId) : INT **<< может быть NULL >>
+}
+
+table(PurchaseRequestItems) {
+  primary_key(Id) : INT
+  foreign_key(RequestId) : INT
+  foreign_key(ProductId) : INT
+  Quantity : DECIMAL(10,2)
+  RequiredDate : DATE
+}
+
+table(PurchaseOrders) {
+  primary_key(Id) : INT
+  Number : VARCHAR(20)
+  Date : DATETIME
+  Status : VARCHAR(30) **<< 'Draft', 'Sent', 'Completed' >>
+  foreign_key(SupplierId) : INT
+  foreign_key(RequestId) : INT **<< связь с заявкой >>
+}
+
+table(PurchaseOrderItems) {
+  primary_key(Id) : INT
+  foreign_key(OrderId) : INT
+  foreign_key(ProductId) : INT
+  Quantity : DECIMAL(10,2)
+  Price : DECIMAL(10,2)
+}
+
+' -- Связи --
+PurchaseRequests ||--o{ PurchaseRequestItems : contains
+Products }o--o{ PurchaseRequestItems : references
+PurchaseRequests }|--|| Users : created_by
+PurchaseRequests }|--o| Users : approved_by
+
+PurchaseOrders ||--o{ PurchaseOrderItems : contains
+Products }o--o{ PurchaseOrderItems : references
+PurchaseOrders }|--|| Suppliers : placed_with
+PurchaseOrders }|--|| PurchaseRequests : generated_from
+
+' Админ управляет:
+Users }|--|| Users : managed_by? (логически)
+Suppliers }|--o| Users : managed_by
+Products }|--o| Users : managed_by
+
+@enduml
