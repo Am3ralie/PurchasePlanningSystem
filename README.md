@@ -52,7 +52,7 @@
   <summary><b> Процессы и испытания</b></summary>
   <br>
   <p align="center">
-    <img src="screenshots/Схема взаимодействия компонентов при просмотре заявки.png" width="80%" alt="Схема">
+    <img src="screenshots/Схема взаимодействия компонентов при просмотре заявки.png" width="50%" alt="Схема">
   </p>
   <p align="center">
     <img src="screenshots/Форма добавления нового испытания над продукцией.png" width="70%" alt="Форма">
